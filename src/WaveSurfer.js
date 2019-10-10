@@ -6,12 +6,15 @@ import { useKeyPress } from "./keyPressHooks";
 import { useDropzone } from "react-dropzone";
 import SoundTouch from "./soundtouch";
 
+import "./WaveSurfer.css";
+
 const ZOOM_RANGE = {
   min: 20,
   max: 200
 };
 
 export default function(args) {
+  const [fineTune, setFineTune] = useState(0);
   const [waveSurfer, setWaveSurfer] = useState();
   const [soundTouchObj, setSoundTouchObj] = useState();
   const [startLocation, setStartLocation] = useState(null);
@@ -57,16 +60,20 @@ export default function(args) {
     if (waveSurfer) waveSurfer.load("sample.mp3");
   }, [waveSurfer]);
 
+  const playPausePressed = useCallback(() => {
+    if (waveSurfer.isPlaying()) {
+      waveSurfer.pause();
+    } else {
+      console.log("starting to play at", startLocation);
+      waveSurfer.play(startLocation);
+    }
+  }, [waveSurfer, startLocation]);
+
   useEffect(() => {
     if (playPressed) {
-      if (waveSurfer.isPlaying()) {
-        waveSurfer.pause();
-      } else {
-        console.log("starting to play at", startLocation);
-        waveSurfer.play(startLocation);
-      }
+      playPausePressed();
     }
-  }, [waveSurfer, playPressed, startLocation]);
+  }, [playPressed, playPausePressed]);
 
   useEffect(() => {
     console.log("registering ready play etc.", waveSurfer);
@@ -112,7 +119,7 @@ export default function(args) {
         waveSurfer.un("ready");
       }
     };
-  }, [waveSurfer, pitchShift]);
+  }, [waveSurfer]);
 
   useEffect(() => {
     if (!waveSurfer) return;
@@ -134,8 +141,8 @@ export default function(args) {
       filter.sourcePosition = ~~(
         waveSurfer.backend.getPlayedPercents() * soundTouchObj.length
       );
-      if (pitchShift !== 0) {
-        soundTouchObj.soundTouch.pitchSemitones = pitchShift;
+      if (pitchShift !== 0 || fineTune !== 0) {
+        soundTouchObj.soundTouch.pitchSemitones = pitchShift + fineTune / 50;
       }
 
       soundTouchObj.soundtouchNode = SoundTouch.getWebAudioNode(
@@ -148,7 +155,7 @@ export default function(args) {
     return () => {
       waveSurfer.un("play");
     };
-  }, [soundTouchObj, waveSurfer, startLocation, pitchShift]);
+  }, [soundTouchObj, waveSurfer, startLocation, pitchShift, fineTune]);
 
   useEffect(() => {
     if (!waveSurfer) return;
@@ -199,56 +206,80 @@ export default function(args) {
         <div id="timeline"></div>
         <div id="waveform"></div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-around" }}>
-        <div {...getRootProps()} style={{ background: "pink" }}>
-          <input {...getInputProps()} />
-
-          {isDragActive ? (
-            <p>Drop the files here ...</p>
-          ) : (
-            <p>Drag 'n' drop some files here, or click to select files</p>
-          )}
-        </div>
-        <div id="speed">
-          <div>
-            speed 0
-            <input
-              type="range"
-              value={speed}
-              onChange={e => setSpeed(e.target.value)}
-              step={0.01}
-              min={0}
-              max={2}
-            />
-            2
-          </div>
-          <div>{speed}</div>
-        </div>
+      <div className="settings">
         <div>
+          <button
+            type="button"
+            onClick={e => {
+              playPausePressed();
+            }}
+          >
+            Play/Pause
+          </button>
+          <div {...getRootProps()}>
+            <input {...getInputProps()} />
+
+            {isDragActive ? (
+              <p>Drop the files here ...</p>
+            ) : (
+              <p>Drag 'n' drop some files here, or click to select files</p>
+            )}
+          </div>
+          <div id="speed">
+            <div>
+              speed 0
+              <input
+                type="range"
+                value={speed}
+                onChange={e => setSpeed(e.target.value)}
+                step={0.01}
+                min={0}
+                max={2}
+              />
+              2
+            </div>
+            <div>{speed}</div>
+          </div>
           <div>
-            pitch shift(semitones) -
+            <div>
+              pitch shift(semitones) -
+              <input
+                type="range"
+                value={pitchShift}
+                onChange={e => setPitchShift(Number(e.target.value))}
+                step={1}
+                min={-12}
+                max={12}
+              />
+            </div>
+            <p>{pitchShift}</p>
+          </div>
+          <div>
+            <div>
+              fine tune(cents) -
+              <input
+                type="range"
+                value={fineTune}
+                onChange={e => setFineTune(Number(e.target.value))}
+                step={1}
+                min={-50}
+                max={50}
+              />
+            </div>
+            <p>{fineTune}</p>
+          </div>
+
+          <div id="zoom">
+            zoom
             <input
               type="range"
-              value={pitchShift}
-              onChange={e => setPitchShift(e.target.value)}
-              step={1}
-              min={-12}
-              max={12}
-            />
+              value={zoom}
+              onChange={e => setZoom(e.target.value)}
+              min={ZOOM_RANGE.min}
+              max={ZOOM_RANGE.max}
+              step="10"
+            ></input>
           </div>
-          <p>{pitchShift}</p>
-        </div>
-
-        <div id="zoom">
-          zoom
-          <input
-            type="range"
-            value={zoom}
-            onChange={e => setZoom(e.target.value)}
-            min={ZOOM_RANGE.min}
-            max={ZOOM_RANGE.max}
-            step="10"
-          ></input>
         </div>
       </div>
     </div>
