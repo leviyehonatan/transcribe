@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import WaveSurfer from "wavesurfer.js";
 import TimeLine from "wavesurfer.js/dist/plugin/wavesurfer.timeline";
 import MyTimeLine from "./wavesurfer.markers";
 import { useKeyPress } from "./keyPressHooks";
+import { useDropzone } from "react-dropzone";
 import SoundTouch from "./soundtouch";
 
 const ZOOM_RANGE = {
@@ -11,133 +12,168 @@ const ZOOM_RANGE = {
 };
 
 export default function(args) {
-  const [waveSurfer, setWaveSurfer] = useState(null);
+  const [waveSurfer, setWaveSurfer] = useState();
+  const [soundTouchObj, setSoundTouchObj] = useState();
   const [startLocation, setStartLocation] = useState(null);
   const [zoom, setZoom] = useState(50);
   const [speed, setSpeed] = useState(1);
   const [pitchShift, setPitchShift] = useState(0);
-  const [timeline, setTimeLine] = useState(null);
   const [surferReady, setSurferReady] = useState(false);
   const playPressed = useKeyPress(" ");
   const beatPressed = useKeyPress("b");
+
+  const onDrop = useCallback(
+    acceptedFiles => {
+      console.log("acceptedFiles", acceptedFiles);
+      let firstFile = acceptedFiles[0];
+      console.log(firstFile);
+      console.log();
+      waveSurfer.loadBlob(firstFile);
+    },
+    [waveSurfer]
+  );
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
+
+  useEffect(() => {
+    if (!waveSurfer) {
+      setWaveSurfer(
+        WaveSurfer.create({
+          container: "#waveform",
+          waveColor: "violet",
+          height: 300,
+          progressColor: "violet",
+          fillParent: true,
+          plugins: [
+            MyTimeLine.create({
+              container: "#timeline"
+            })
+          ]
+        })
+      );
+    }
+  }, [waveSurfer]);
+
+  useEffect(() => {
+    if (waveSurfer) waveSurfer.load("sample.mp3");
+  }, [waveSurfer]);
 
   useEffect(() => {
     if (playPressed) {
       if (waveSurfer.isPlaying()) {
         waveSurfer.pause();
       } else {
+        console.log("starting to play at", startLocation);
         waveSurfer.play(startLocation);
       }
     }
-  }, [playPressed, startLocation, waveSurfer]);
+  }, [waveSurfer, playPressed, startLocation]);
 
   useEffect(() => {
-    if (waveSurfer == null) {
-      let markers = [];
-      let myTimeLine = MyTimeLine.create({
-        container: "#timeline",
-        markers
-      });
-      let waveSurferObject = WaveSurfer.create({
-        container: "#waveform",
-        waveColor: "violet",
-        progressColor: "violet",
-        fillParent: true,
-        plugins: [myTimeLine]
-      });
+    console.log("registering ready play etc.", waveSurfer);
+    if (!waveSurfer) return;
 
-      let soundTouch = null;
-      let source = null;
-      waveSurferObject.on("ready", () => {
-        soundTouch = new SoundTouch.SoundTouch(
-          waveSurferObject.backend.ac.sampleRate
-        );
-        let buffer = waveSurferObject.backend.buffer;
-        let channels = buffer.numberOfChannels;
-        let l = buffer.getChannelData(0);
-        let r = channels > 1 ? buffer.getChannelData(1) : l;
-        let length = buffer.length;
-        let seekingPos = null;
-        let seekingDiff = 0;
-        source = {
-          extract: function(target, numFrames, position) {
-            if (seekingPos != null) {
-              seekingDiff = seekingPos - position;
-              seekingPos = null;
-            }
-
-            position += seekingDiff;
-
-            for (let i = 0; i < numFrames; i++) {
-              target[i * 2] = l[i + position];
-              target[i * 2 + 1] = r[i + position];
-            }
-
-            return Math.min(numFrames, length - position);
-          }
-        };
-
-        let soundtouchNode;
-
-        waveSurferObject.on("play", function(e) {
-          console.log("play");
-
-          seekingPos = ~~(
-            waveSurferObject.backend.getPlayedPercents() * length
-          );
-
-          soundTouch.tempo = waveSurferObject.getPlaybackRate();
-
-          let filter = new SoundTouch.SimpleFilter(source, soundTouch);
-          console.log("pitchShift", pitchShift);
-          if (pitchShift !== 0) {
-            soundTouch.pitchSemitones(pitchShift);
-            console.log("setting pitch to", pitchShift, "semitones");
+    let soundTouch = null;
+    let source = null;
+    waveSurfer.on("ready", () => {
+      soundTouch = new SoundTouch.SoundTouch(waveSurfer.backend.ac.sampleRate);
+      let buffer = waveSurfer.backend.buffer;
+      let channels = buffer.numberOfChannels;
+      let l = buffer.getChannelData(0);
+      let r = channels > 1 ? buffer.getChannelData(1) : l;
+      let length = buffer.length;
+      source = {
+        extract: function(target, numFrames, position) {
+          for (let i = 0; i < numFrames; i++) {
+            target[i * 2] = l[i + position];
+            target[i * 2 + 1] = r[i + position];
           }
 
-          soundtouchNode = SoundTouch.getWebAudioNode(
-            waveSurferObject.backend.ac,
-            filter
-          );
-
-          console.log("attaching soundtouch filter");
-          waveSurferObject.backend.setFilter(soundtouchNode);
-        });
-
-        waveSurferObject.on("pause", function() {
-          console.log("pause");
-          soundtouchNode && soundtouchNode.disconnect();
-        });
-
-        waveSurferObject.on("seek", function(e, e1) {
-          console.log("seek", waveSurferObject.getCurrentTime(), e, e1);
-          setStartLocation(waveSurferObject.getCurrentTime());
-
-          seekingPos = ~~(
-            waveSurferObject.backend.getPlayedPercents() * length
-          );
-        });
-
-        waveSurferObject.on("error", function(e) {
-          console.warn(e);
-          waveSurferObject.play();
-        });
-
-        setSurferReady(true);
+          return Math.min(numFrames, length - position);
+        }
+      };
+      setSoundTouchObj({
+        soundTouch,
+        source,
+        length
       });
-      waveSurferObject.load("sample.mp3");
+      setSurferReady(true);
+    });
 
-      // document.getElementById("waveform").addEventListener("wheel", e => {
-      //   e.stopPropagation();
-      //   let newZoom = zoom + e.deltaY;
-      //   if (newZoom < ZOOM_RANGE.min) newZoom = ZOOM_RANGE.min;
-      //   if (newZoom > ZOOM_RANGE.max) newZoom = ZOOM_RANGE.max;
-      //   setZoom(newZoom);
-      // });
-      setWaveSurfer(waveSurferObject);
-      setTimeLine(myTimeLine);
-    }
-  }, []);
+    // document.getElementById("waveform").addEventListener("wheel", e => {
+    //   e.stopPropagation();
+    //   let newZoom = zoom + e.deltaY;
+    //   if (newZoom < ZOOM_RANGE.min) newZoom = ZOOM_RANGE.min;
+    //   if (newZoom > ZOOM_RANGE.max) newZoom = ZOOM_RANGE.max;
+    //   setZoom(newZoom);
+    // });
+
+    return () => {
+      if (waveSurfer) {
+        waveSurfer.un("ready");
+      }
+    };
+  }, [waveSurfer, pitchShift]);
+
+  useEffect(() => {
+    if (!waveSurfer) return;
+    waveSurfer.on("error", function(e) {
+      console.warn(e);
+      //      waveSurfer.play();
+    });
+  }, [waveSurfer]);
+
+  useEffect(() => {
+    if (!waveSurfer) return;
+    waveSurfer.on("play", function(e) {
+      soundTouchObj.soundTouch.tempo = waveSurfer.getPlaybackRate();
+
+      let filter = new SoundTouch.SimpleFilter(
+        soundTouchObj.source,
+        soundTouchObj.soundTouch
+      );
+      filter.sourcePosition = ~~(
+        waveSurfer.backend.getPlayedPercents() * soundTouchObj.length
+      );
+      if (pitchShift !== 0) {
+        soundTouchObj.soundTouch.pitchSemitones = pitchShift;
+      }
+
+      soundTouchObj.soundtouchNode = SoundTouch.getWebAudioNode(
+        waveSurfer.backend.ac,
+        filter
+      );
+
+      waveSurfer.backend.setFilter(soundTouchObj.soundtouchNode);
+    });
+    return () => {
+      waveSurfer.un("play");
+    };
+  }, [soundTouchObj, waveSurfer, startLocation, pitchShift]);
+
+  useEffect(() => {
+    if (!waveSurfer) return;
+
+    waveSurfer.on("pause", function() {
+      soundTouchObj &&
+        soundTouchObj.soundtouchNode &&
+        soundTouchObj.soundtouchNode.disconnect();
+    });
+    return () => {
+      waveSurfer.un("pause");
+    };
+  }, [waveSurfer, soundTouchObj]);
+
+  useEffect(() => {
+    if (!waveSurfer) return;
+
+    waveSurfer.on("seek", function(e, e1) {
+      console.log("seek", waveSurfer.getCurrentTime(), e, e1);
+      setStartLocation(waveSurfer.getCurrentTime());
+    });
+    return () => {
+      waveSurfer.un("seek");
+    };
+  }, [waveSurfer, soundTouchObj]);
 
   useEffect(() => {
     if (waveSurfer) waveSurfer.zoom(zoom);
@@ -147,16 +183,15 @@ export default function(args) {
     if (waveSurfer) waveSurfer.setPlaybackRate(speed);
   });
 
-  useEffect(() => {
-    if (beatPressed) {
-      timeline.params.markers.push({
-        when: waveSurfer.getCurrentTime(),
-        type: "BEAT"
-      });
-      waveSurfer.zoom(zoom);
-    }
-  }, [beatPressed]);
-
+  // useEffect(() => {
+  //   if (beatPressed) {
+  //     timeline.params.markers.push({
+  //       when: waveSurfer.getCurrentTime(),
+  //       type: "BEAT"
+  //     });
+  //     waveSurfer.zoom(zoom);
+  //   }
+  // }, [beatPressed]);
   return (
     <div>
       {surferReady ? "" : <div>Loading...</div>}
@@ -165,7 +200,15 @@ export default function(args) {
         <div id="waveform"></div>
       </div>
       <div style={{ display: "flex", justifyContent: "space-around" }}>
-        <div>Position: {waveSurfer && waveSurfer.getCurrentTime()}</div>
+        <div {...getRootProps()} style={{ background: "pink" }}>
+          <input {...getInputProps()} />
+
+          {isDragActive ? (
+            <p>Drop the files here ...</p>
+          ) : (
+            <p>Drag 'n' drop some files here, or click to select files</p>
+          )}
+        </div>
         <div id="speed">
           <div>
             speed 0

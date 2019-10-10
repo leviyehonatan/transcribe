@@ -348,7 +348,6 @@ export default class TimelinePlugin {
    * @private
    */
   renderCanvases() {
-    console.log("renderCanvases", this.params.markers);
     const duration =
       this.wavesurfer.timeline.params.duration ||
       this.wavesurfer.backend.getDuration();
@@ -394,8 +393,6 @@ export default class TimelinePlugin {
       curSeconds += timeInterval;
       curPixel += pixelsPerSecond * timeInterval;
     }
-    console.log("curpixel", curPixel);
-
     // iterate over each position
     const renderPositions = cb => {
       positioning.forEach(pos => {
