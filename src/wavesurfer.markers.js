@@ -104,8 +104,19 @@ export default class TimelinePlugin {
     ws.drawer.wrapper.addEventListener("scroll", this._onScroll);
     ws.on("redraw", this._onRedraw);
     ws.on("zoom", this._onZoom);
+    ws.on("marker-added", this._onMarkerAdded);
 
     this.render();
+  };
+
+  _onMarkerAdded = marker => {
+    console.log("_onMarkerAdded");
+    this.wavesurfer.params.markers.push(marker);
+    // keep it sorted chronologically
+    this.wavesurfer.params.markers.sort((a, b) => a.when - b.when);
+    console.log("sorted", this.wavesurfer.params.markers);
+    this.calcPixelsPerSecond();
+    this.drawMarker(marker);
   };
 
   /**
@@ -116,6 +127,7 @@ export default class TimelinePlugin {
     e.preventDefault();
     const relX = "offsetX" in e ? e.offsetX : e.layerX;
     this.fireEvent("click", relX / this.wrapper.scrollWidth || 0);
+    console.log("_onWrapperClick");
   };
 
   /**
@@ -215,6 +227,7 @@ export default class TimelinePlugin {
     this.wavesurfer.un("redraw", this._onRedraw);
     this.wavesurfer.un("zoom", this._onZoom);
     this.wavesurfer.un("ready", this._onReady);
+    this.wavesurfer.un("marker-added", this._onMarkerAdded);
     this.wavesurfer.drawer.wrapper.removeEventListener(
       "scroll",
       this._onScroll
@@ -268,6 +281,7 @@ export default class TimelinePlugin {
     this.updateCanvases();
     this.updateCanvasesPositioning();
     this.renderCanvases();
+    this.renderMarkers();
   }
 
   /**
@@ -342,6 +356,28 @@ export default class TimelinePlugin {
     });
   }
 
+  calcPixelsPerSecond = () => {
+    const wsParams = this.wavesurfer.params;
+    const duration =
+      this.wavesurfer.timeline.params.duration ||
+      this.wavesurfer.backend.getDuration();
+
+    if (duration <= 0) {
+      return;
+    }
+    const width =
+      wsParams.fillParent && !wsParams.scrollParent
+        ? this.drawer.getWidth()
+        : this.drawer.wrapper.scrollWidth * wsParams.pixelRatio;
+    this.pixelsPerSecond = width / duration;
+  };
+
+  renderMarkers = () => {
+    const wsParams = this.wavesurfer.params;
+    this.calcPixelsPerSecond();
+    wsParams.markers.forEach(marker => this.drawMarker(marker));
+  };
+
   /**
    * Render the timeline labels and notches
    *
@@ -368,6 +404,7 @@ export default class TimelinePlugin {
       (this.params.notchPercentHeight / 100) *
       this.pixelRatio;
     const pixelsPerSecond = width / duration;
+    console.log("pixelPerSeconds", pixelsPerSecond);
 
     const formatTime = this.params.formatTimeCallback;
     // if parameter is function, call the function with
@@ -393,13 +430,13 @@ export default class TimelinePlugin {
       curSeconds += timeInterval;
       curPixel += pixelsPerSecond * timeInterval;
     }
+
     // iterate over each position
     const renderPositions = cb => {
       positioning.forEach(pos => {
         cb(pos[0], pos[1], pos[2]);
       });
     };
-
     // render primary labels
     this.setFillStyles(this.params.primaryColor);
     this.setFonts(`${fontSize}px ${this.params.fontFamily}`);
@@ -523,6 +560,30 @@ export default class TimelinePlugin {
         textWidth = context.measureText(text).width;
         context.fillText(text, x - xOffset, y);
       }
+
+      xOffset += canvasWidth;
+    });
+  }
+
+  drawMarker(marker) {
+    console.log("drawMarker", marker, this.pixelsPerSecond);
+    let xOffset = 0;
+    let x = marker.when * this.pixelsPerSecond;
+    this.canvases.forEach(canvas => {
+      const context = canvas.getContext("2d");
+      const canvasWidth = context.canvas.width;
+
+      if (xOffset > x) {
+        return;
+      }
+
+      context.beginPath();
+      let actualX = x - xOffset;
+      context.moveTo(actualX, canvas.height);
+      context.lineTo(actualX + 5, canvas.height / 2);
+      context.lineTo(actualX - 5, canvas.height / 2);
+      context.closePath();
+      context.fill();
 
       xOffset += canvasWidth;
     });

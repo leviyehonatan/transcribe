@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import WaveSurfer from "wavesurfer.js";
-import TimeLine from "wavesurfer.js/dist/plugin/wavesurfer.timeline";
-import MyTimeLine from "./wavesurfer.markers";
+import TimeLine from "./wavesurfer.markers";
 import { useKeyPress } from "./keyPressHooks";
 import { useDropzone } from "react-dropzone";
 import SoundTouch from "./soundtouch";
@@ -24,6 +23,8 @@ export default function(args) {
   const [surferReady, setSurferReady] = useState(false);
   const playPressed = useKeyPress(" ");
   const beatPressed = useKeyPress("b");
+  const prevMarkerPressed = useKeyPress("[");
+  const nextMarkerPressed = useKeyPress("]");
 
   const onDrop = useCallback(
     acceptedFiles => {
@@ -38,6 +39,56 @@ export default function(args) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
 
   useEffect(() => {
+    if (!waveSurfer) return;
+    if (!nextMarkerPressed && !prevMarkerPressed) return;
+    console.log(
+      "nextPressed",
+      nextMarkerPressed,
+      "prevPressed",
+      prevMarkerPressed
+    );
+    let markers = waveSurfer.params.markers;
+    let now = waveSurfer.getCurrentTime();
+    let found;
+    console.log("now", now);
+
+    for (let i = 0; i < markers.length; i++) {
+      let current = markers[i];
+      let next = markers[i + 1];
+      console.log("current", current, "next", next, "length", markers.length);
+
+      if (!next) {
+        found = i;
+        break;
+      } else if (current.when <= now && next.when > now) {
+        found = i;
+        break;
+      }
+    }
+    console.log("found", found);
+    if (prevMarkerPressed && found === 0) return;
+    if (nextMarkerPressed && found === markers.length - 1) return;
+    let newMarkerIndex = prevMarkerPressed
+      ? now > markers[found].when // prevMarkerPressed
+        ? found
+        : found - 1 // next
+      : now < markers[found].when // nextMarkerPressed
+      ? found
+      : found + 1;
+    console.log("newMarkerIndex", newMarkerIndex);
+    waveSurfer.seekAndCenter(
+      markers[newMarkerIndex].when / waveSurfer.getDuration()
+    );
+  }, [waveSurfer, prevMarkerPressed, nextMarkerPressed]);
+
+  useEffect(() => {
+    if (!waveSurfer) return;
+    console.log("registering backend-craeted");
+    waveSurfer.on("backend-created", () => {
+      console.log("backend-created");
+    });
+  }, [waveSurfer]);
+  useEffect(() => {
     if (!waveSurfer) {
       setWaveSurfer(
         WaveSurfer.create({
@@ -46,8 +97,9 @@ export default function(args) {
           height: 300,
           progressColor: "violet",
           fillParent: true,
+          markers: [],
           plugins: [
-            MyTimeLine.create({
+            TimeLine.create({
               container: "#timeline"
             })
           ]
@@ -61,13 +113,22 @@ export default function(args) {
   }, [waveSurfer]);
 
   const playPausePressed = useCallback(() => {
+    console.log("playPause");
     if (waveSurfer.isPlaying()) {
       waveSurfer.pause();
     } else {
-      console.log("starting to play at", startLocation);
       waveSurfer.play(startLocation);
     }
   }, [waveSurfer, startLocation]);
+
+  const addBeatMarker = useCallback(() => {
+    if (!waveSurfer) return;
+    console.log("adding marker");
+    waveSurfer.fireEvent("marker-added", {
+      when: waveSurfer.getCurrentTime(),
+      type: "BEAT"
+    });
+  }, [waveSurfer]);
 
   useEffect(() => {
     if (playPressed) {
@@ -76,12 +137,12 @@ export default function(args) {
   }, [playPressed, playPausePressed]);
 
   useEffect(() => {
-    console.log("registering ready play etc.", waveSurfer);
     if (!waveSurfer) return;
 
     let soundTouch = null;
     let source = null;
     waveSurfer.on("ready", () => {
+      console.log("onready");
       soundTouch = new SoundTouch.SoundTouch(waveSurfer.backend.ac.sampleRate);
       let buffer = waveSurfer.backend.buffer;
       let channels = buffer.numberOfChannels;
@@ -132,6 +193,7 @@ export default function(args) {
   useEffect(() => {
     if (!waveSurfer) return;
     waveSurfer.on("play", function(e) {
+      console.log("onplay");
       soundTouchObj.soundTouch.tempo = waveSurfer.getPlaybackRate();
 
       let filter = new SoundTouch.SimpleFilter(
@@ -159,8 +221,18 @@ export default function(args) {
 
   useEffect(() => {
     if (!waveSurfer) return;
+    if (waveSurfer.isPlaying()) {
+      // we need to re-generate the filter to apply the pitch shift
+      waveSurfer.pause();
+      waveSurfer.play();
+    }
+  }, [waveSurfer, pitchShift, fineTune]);
+
+  useEffect(() => {
+    if (!waveSurfer) return;
 
     waveSurfer.on("pause", function() {
+      console.log("onpause");
       soundTouchObj &&
         soundTouchObj.soundtouchNode &&
         soundTouchObj.soundtouchNode.disconnect();
@@ -172,7 +244,6 @@ export default function(args) {
 
   useEffect(() => {
     if (!waveSurfer) return;
-
     waveSurfer.on("seek", function(e, e1) {
       console.log("seek", waveSurfer.getCurrentTime(), e, e1);
       setStartLocation(waveSurfer.getCurrentTime());
@@ -188,17 +259,22 @@ export default function(args) {
 
   useEffect(() => {
     if (waveSurfer) waveSurfer.setPlaybackRate(speed);
+  }, [waveSurfer, speed]);
+
+  useEffect(() => {
+    if (!waveSurfer) return;
+    waveSurfer.on("zoom", () => {
+      console.log("zoom");
+    });
   });
 
-  // useEffect(() => {
-  //   if (beatPressed) {
-  //     timeline.params.markers.push({
-  //       when: waveSurfer.getCurrentTime(),
-  //       type: "BEAT"
-  //     });
-  //     waveSurfer.zoom(zoom);
-  //   }
-  // }, [beatPressed]);
+  useEffect(() => {
+    if (beatPressed) {
+      console.log("beat button pressed");
+      addBeatMarker();
+    }
+  }, [waveSurfer, addBeatMarker, beatPressed]);
+
   return (
     <div>
       {surferReady ? "" : <div>Loading...</div>}
@@ -208,21 +284,37 @@ export default function(args) {
       </div>
       <div className="settings">
         <div>
-          <button
-            type="button"
-            onClick={e => {
-              playPausePressed();
-            }}
-          >
-            Play/Pause
-          </button>
+          <div>
+            {" "}
+            <button
+              type="button"
+              onClick={e => {
+                addBeatMarker();
+              }}
+            >
+              Add Beat Marker
+            </button>
+          </div>
+          <div>
+            {" "}
+            <button
+              type="button"
+              onClick={e => {
+                playPausePressed();
+              }}
+            >
+              Play/Pause
+            </button>
+          </div>
           <div {...getRootProps()}>
             <input {...getInputProps()} />
 
             {isDragActive ? (
               <p>Drop the files here ...</p>
             ) : (
-              <p>Drag 'n' drop some files here, or click to select files</p>
+              <button>
+                Drag 'n' drop some files here, or click here to select files
+              </button>
             )}
           </div>
           <div id="speed">
