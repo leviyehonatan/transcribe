@@ -1,3 +1,5 @@
+import { MarkerTypes } from "./types";
+
 /**
  * @typedef {Object} TimelinePluginParams
  * @desc Extends the `WavesurferParams` wavesurfer was initialised with
@@ -577,13 +579,23 @@ export default class TimelinePlugin {
         return;
       }
 
-      context.beginPath();
       let actualX = x - xOffset;
-      context.moveTo(actualX, canvas.height);
-      context.lineTo(actualX + 5, canvas.height / 2);
-      context.lineTo(actualX - 5, canvas.height / 2);
-      context.closePath();
-      context.fill();
+      if (marker.type === MarkerTypes.BEAT) {
+        context.strokeStyle = "black";
+        context.beginPath();
+        context.moveTo(actualX, canvas.height / 2);
+        context.lineTo(actualX, canvas.height);
+        context.closePath();
+        context.stroke();
+      } else if (marker.type === MarkerTypes.MEASURE) {
+        context.fillStyle = "blue";
+        context.beginPath();
+        context.moveTo(actualX, canvas.height);
+        context.lineTo(actualX + 5, canvas.height / 2);
+        context.lineTo(actualX - 5, canvas.height / 2);
+        context.closePath();
+        context.fill();
+      }
 
       xOffset += canvasWidth;
     });

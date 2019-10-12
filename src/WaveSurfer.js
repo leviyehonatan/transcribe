@@ -4,6 +4,8 @@ import TimeLine from "./wavesurfer.markers";
 import { useKeyPress } from "./keyPressHooks";
 import { useDropzone } from "react-dropzone";
 import SoundTouch from "./soundtouch";
+import { MarkerTypes } from "./types";
+import { nearlyEqual } from "./helper";
 
 import "./WaveSurfer.css";
 
@@ -23,8 +25,12 @@ export default function(args) {
   const [surferReady, setSurferReady] = useState(false);
   const playPressed = useKeyPress(" ");
   const beatPressed = useKeyPress("b");
+  const measurePressed = useKeyPress("m");
+  const deletePressed = useKeyPress(8);
+  const resetMarkersPressed = useKeyPress("r");
   const prevMarkerPressed = useKeyPress("[");
   const nextMarkerPressed = useKeyPress("]");
+  const selectedMarker = useState();
 
   const onDrop = useCallback(
     acceptedFiles => {
@@ -41,31 +47,27 @@ export default function(args) {
   useEffect(() => {
     if (!waveSurfer) return;
     if (!nextMarkerPressed && !prevMarkerPressed) return;
-    console.log(
-      "nextPressed",
-      nextMarkerPressed,
-      "prevPressed",
-      prevMarkerPressed
-    );
+
     let markers = waveSurfer.params.markers;
+    if (markers.length === 0) return;
     let now = waveSurfer.getCurrentTime();
     let found;
-    console.log("now", now);
 
     for (let i = 0; i < markers.length; i++) {
       let current = markers[i];
       let next = markers[i + 1];
-      console.log("current", current, "next", next, "length", markers.length);
 
       if (!next) {
         found = i;
         break;
-      } else if (current.when <= now && next.when > now) {
+      } else if (
+        (nearlyEqual(current.when, now) || current.when < now) &&
+        next.when > now
+      ) {
         found = i;
         break;
       }
     }
-    console.log("found", found);
     if (prevMarkerPressed && found === 0) return;
     if (nextMarkerPressed && found === markers.length - 1) return;
     let newMarkerIndex = prevMarkerPressed
@@ -80,6 +82,34 @@ export default function(args) {
       markers[newMarkerIndex].when / waveSurfer.getDuration()
     );
   }, [waveSurfer, prevMarkerPressed, nextMarkerPressed]);
+
+  useEffect(() => {
+    if (!waveSurfer) return;
+    if (deletePressed) {
+      console.log("now", waveSurfer.getCurrentTime());
+      let markers = waveSurfer.params.markers;
+      let toDelete;
+      for (let i = 0; i < markers.length; i++) {
+        if (nearlyEqual(markers[i].when, waveSurfer.getCurrentTime())) {
+          toDelete = i;
+          break;
+        }
+      }
+      if (toDelete) {
+        console.log("deleting", markers[toDelete]);
+        markers.splice(toDelete, 1);
+        waveSurfer.fireEvent("redraw");
+      } else {
+        console.log("nothing found to delete");
+      }
+    }
+  }, [waveSurfer, deletePressed]);
+
+  useEffect(() => {
+    if (!waveSurfer && !resetMarkersPressed) return;
+    waveSurfer.params.markers = [];
+    waveSurfer.fireEvent("redraw");
+  }, [waveSurfer, resetMarkersPressed]);
 
   useEffect(() => {
     if (!waveSurfer) return;
@@ -121,14 +151,23 @@ export default function(args) {
     }
   }, [waveSurfer, startLocation]);
 
-  const addBeatMarker = useCallback(() => {
-    if (!waveSurfer) return;
-    console.log("adding marker");
-    waveSurfer.fireEvent("marker-added", {
-      when: waveSurfer.getCurrentTime(),
-      type: "BEAT"
-    });
-  }, [waveSurfer]);
+  const addMarker = useCallback(
+    type => {
+      if (!waveSurfer) return;
+      let when = waveSurfer.getCurrentTime();
+      // check there's no existing marker at this exact timeline
+      let existing = waveSurfer.params.markers.find(
+        marker => marker.when === when
+      );
+      if (existing) return;
+      console.log("adding marker");
+      waveSurfer.fireEvent("marker-added", {
+        when,
+        type
+      });
+    },
+    [waveSurfer]
+  );
 
   useEffect(() => {
     if (playPressed) {
@@ -269,11 +308,12 @@ export default function(args) {
   });
 
   useEffect(() => {
-    if (beatPressed) {
-      console.log("beat button pressed");
-      addBeatMarker();
-    }
-  }, [waveSurfer, addBeatMarker, beatPressed]);
+    if (!measurePressed && !beatPressed) return;
+    let type;
+    if (measurePressed) type = MarkerTypes.MEASURE;
+    if (beatPressed) type = MarkerTypes.BEAT;
+    addMarker(type);
+  }, [waveSurfer, addMarker, beatPressed, measurePressed]);
 
   return (
     <div>
@@ -289,10 +329,18 @@ export default function(args) {
             <button
               type="button"
               onClick={e => {
-                addBeatMarker();
+                addMarker(MarkerTypes.BEAT);
               }}
             >
               Add Beat Marker
+            </button>
+            <button
+              type="button"
+              onClick={e => {
+                addMarker(MarkerTypes.MEASURE);
+              }}
+            >
+              Add Measure Marker
             </button>
           </div>
           <div>
