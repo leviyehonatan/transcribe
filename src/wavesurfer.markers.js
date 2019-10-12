@@ -282,7 +282,7 @@ export default class TimelinePlugin {
     }
     this.updateCanvases();
     this.updateCanvasesPositioning();
-    this.renderCanvases();
+    //    this.renderCanvases();
     this.renderMarkers();
   }
 
@@ -568,7 +568,6 @@ export default class TimelinePlugin {
   }
 
   drawMarker(marker) {
-    console.log("drawMarker", marker, this.pixelsPerSecond);
     let xOffset = 0;
     let x = marker.when * this.pixelsPerSecond;
     this.canvases.forEach(canvas => {

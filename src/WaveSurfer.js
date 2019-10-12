@@ -18,7 +18,6 @@ export default function(args) {
   const [fineTune, setFineTune] = useState(0);
   const [waveSurfer, setWaveSurfer] = useState();
   const [soundTouchObj, setSoundTouchObj] = useState();
-  const [startLocation, setStartLocation] = useState(null);
   const [zoom, setZoom] = useState(50);
   const [speed, setSpeed] = useState(1);
   const [pitchShift, setPitchShift] = useState(0);
@@ -31,18 +30,18 @@ export default function(args) {
   const nextMeasureMarkerPressed = useKeyPress("]");
   const prevBeatMarkerPressed = useKeyPress("{");
   const nextBeatMarkerPressed = useKeyPress("}");
+  const zoomInPressed = useKeyPress("j");
+  const zoomOutPressed = useKeyPress("h");
   const savePressed = useKeyPress("s");
 
   const onDrop = useCallback(
     acceptedFiles => {
-      console.log("acceptedFiles", acceptedFiles);
       let firstFile = acceptedFiles[0];
-      console.log(firstFile);
-      console.log();
       waveSurfer.loadBlob(firstFile);
     },
     [waveSurfer]
   );
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
 
   const searchMarker = useCallback(
@@ -51,42 +50,33 @@ export default function(args) {
       let markers = waveSurfer.params.markers;
       if (markers.length === 0) return;
       let now = waveSurfer.getCurrentTime();
-      let found;
 
-      if (markers.length === 1) {
-        found = 0;
-      } else {
-        for (let i = 0; i < markers.length; i++) {
-          let current = markers[i];
-          let next = markers[i + 1];
+      for (let i = 0; i < markers.length; i++) {
+        let current = markers[i];
+        let next = markers[i + 1];
 
-          if (
-            (prev && // prev pressed
-              current.when < now &&
-              (!next ||
-                ((next.when > now || nearlyEqual(next.when, now)) &&
-                  (type === MarkerTypes.BEAT ||
-                    (type === MarkerTypes.MEASURE &&
-                      current.type === MarkerTypes.MEASURE))))) ||
-            (!prev && // next pressed
-              (next &&
-                next.when > now &&
-                (current.when < now || nearlyEqual(current.when, now)) &&
+        if (
+          (prev && // prev
+            current.when < now &&
+            (!next ||
+              ((next.when > now || nearlyEqual(next.when, now)) &&
                 (type === MarkerTypes.BEAT ||
                   (type === MarkerTypes.MEASURE &&
-                    next.type === MarkerTypes.MEASURE))))
-          ) {
-            found = prev ? i : i + 1;
-            break;
-          }
+                    current.type === MarkerTypes.MEASURE))))) ||
+          (!prev && // next
+            (next &&
+              //(current.when < now || nearlyEqual(current.when, now)) &&
+              next.when > now &&
+              (type === MarkerTypes.BEAT ||
+                (type === MarkerTypes.MEASURE &&
+                  next.type === MarkerTypes.MEASURE))))
+        ) {
+          waveSurfer.seekAndCenter(
+            markers[prev ? i : i + 1].when / waveSurfer.getDuration()
+          );
+          break;
         }
       }
-
-      console.log("found", found);
-      if (found)
-        waveSurfer.seekAndCenter(
-          markers[found].when / waveSurfer.getDuration()
-        );
     },
     [waveSurfer]
   );
@@ -189,9 +179,9 @@ export default function(args) {
     if (waveSurfer.isPlaying()) {
       waveSurfer.pause();
     } else {
-      waveSurfer.play(startLocation);
+      waveSurfer.play(waveSurfer.params.startLocation);
     }
-  }, [waveSurfer, startLocation]);
+  }, [waveSurfer]);
 
   const addMarker = useCallback(
     type => {
@@ -269,6 +259,23 @@ export default function(args) {
     };
   }, [waveSurfer]);
 
+  const zoomByFactor = useCallback(
+    factor => {
+      let newZoom = zoom * factor;
+      if (newZoom > 200) newZoom = 200;
+      if (newZoom < 20) newZoom = 20;
+
+      setZoom(newZoom);
+    },
+    [zoom]
+  );
+
+  useEffect(() => {
+    if (!zoomInPressed && !zoomOutPressed) return;
+    const factor = 1.25;
+    zoomByFactor(zoomInPressed ? factor : 1 / factor);
+  }, [zoomInPressed, zoomOutPressed, zoomByFactor]);
+
   useEffect(() => {
     if (!waveSurfer) return;
     waveSurfer.on("error", function(e) {
@@ -304,7 +311,7 @@ export default function(args) {
     return () => {
       waveSurfer.un("play");
     };
-  }, [soundTouchObj, waveSurfer, startLocation, pitchShift, fineTune]);
+  }, [soundTouchObj, waveSurfer, pitchShift, fineTune]);
 
   useEffect(() => {
     if (!waveSurfer) return;
@@ -333,7 +340,7 @@ export default function(args) {
     if (!waveSurfer) return;
     waveSurfer.on("seek", function(e, e1) {
       console.log("seek", waveSurfer.getCurrentTime(), e, e1);
-      setStartLocation(waveSurfer.getCurrentTime());
+      waveSurfer.params.startLocation = waveSurfer.getCurrentTime();
     });
     return () => {
       waveSurfer.un("seek");
@@ -341,7 +348,10 @@ export default function(args) {
   }, [waveSurfer, soundTouchObj]);
 
   useEffect(() => {
-    if (waveSurfer) waveSurfer.zoom(zoom);
+    if (waveSurfer) {
+      console.log("setting zoom to ", zoom);
+      waveSurfer.zoom(zoom);
+    }
   }, [waveSurfer, zoom]);
 
   useEffect(() => {
@@ -379,7 +389,7 @@ export default function(args) {
                 searchMarker(MarkerTypes.BEAT, true);
               }}
             >
-              Search previous beat marker
+              previous beat
             </button>
             <button
               type="button"
@@ -387,7 +397,7 @@ export default function(args) {
                 searchMarker(MarkerTypes.BEAT, false);
               }}
             >
-              Search next beat marker
+              next beat
             </button>
             <button
               type="button"
@@ -395,7 +405,7 @@ export default function(args) {
                 searchMarker(MarkerTypes.MEASURE, true);
               }}
             >
-              Search previous measure marker
+              previous measure
             </button>
             <button
               type="button"
@@ -403,9 +413,10 @@ export default function(args) {
                 searchMarker(MarkerTypes.MEASURE, false);
               }}
             >
-              Search next measure marker
+              next measure
             </button>
-
+          </div>
+          <div>
             <button
               type="button"
               onClick={e => {
@@ -498,21 +509,25 @@ export default function(args) {
           </div>
 
           <div id="zoom">
-            zoom
-            <input
-              type="range"
-              value={zoom}
-              onChange={e => setZoom(e.target.value)}
-              min={ZOOM_RANGE.min}
-              max={ZOOM_RANGE.max}
-              step="10"
-            ></input>
+            <div>
+              zoom
+              <input
+                type="range"
+                value={zoom}
+                onChange={e => setZoom(e.target.value)}
+                min={ZOOM_RANGE.min}
+                max={ZOOM_RANGE.max}
+                step="10"
+              ></input>
+            </div>
+            <div>{zoom}</div>
           </div>
         </div>
       </div>
       <div>
         Keyboard: space - play/pause, b - beat marker, m - measure marker, [/] -
-        next/prev marker, backspace - delete current marker
+        next/prev marker, {"{ / }"} - next/prev beat, backspace - delete current
+        marker
       </div>
     </div>
   );

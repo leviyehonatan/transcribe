@@ -5,9 +5,12 @@ export function useKeyPress(targetKey) {
   const [keyPressed, setKeyPressed] = useState(false);
 
   // If pressed key is our target key then set to true
-  function downHandler({ key, keyCode }) {
-    if (key === targetKey || keyCode === targetKey) {
+  function downHandler(e) {
+    if (e.key === targetKey || e.keyCode === targetKey) {
       setKeyPressed(true);
+      //if (e.target === document.body) {
+      e.preventDefault();
+      // }
     }
   }
 

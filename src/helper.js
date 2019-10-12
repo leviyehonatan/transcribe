@@ -5,6 +5,6 @@ export function nearlyEqual(a, b) {
   } else {
     // use relative error
     let diff = Math.abs(a - b);
-    return diff <= Number.EPSILON;
+    return diff <= Number.EPSILON * 3;
   }
 }
