@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import WaveSurfer from "wavesurfer.js";
 import TimeLine from "./wavesurfer.markers";
-import { useKeyPress } from "./keyPressHooks";
+import { useKeyPress, useMultiKeyPress } from "./keyPressHooks";
 import { useDropzone } from "react-dropzone";
 import SoundTouch from "./soundtouch";
 import { MarkerTypes } from "./types";
@@ -27,10 +27,11 @@ export default function(args) {
   const beatPressed = useKeyPress("b");
   const measurePressed = useKeyPress("m");
   const deletePressed = useKeyPress(8);
-  const resetMarkersPressed = useKeyPress("r");
-  const prevMarkerPressed = useKeyPress("[");
-  const nextMarkerPressed = useKeyPress("]");
-  const selectedMarker = useState();
+  const prevMeasureMarkerPressed = useKeyPress("[");
+  const nextMeasureMarkerPressed = useKeyPress("]");
+  const prevBeatMarkerPressed = useKeyPress("{");
+  const nextBeatMarkerPressed = useKeyPress("}");
+  const savePressed = useKeyPress("s");
 
   const onDrop = useCallback(
     acceptedFiles => {
@@ -44,44 +45,66 @@ export default function(args) {
   );
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
 
+  const searchMarker = useCallback(
+    (type, prev) => {
+      console.log("searching marker", type, prev);
+      let markers = waveSurfer.params.markers;
+      if (markers.length === 0) return;
+      let now = waveSurfer.getCurrentTime();
+      let found;
+
+      if (markers.length === 1) {
+        found = 0;
+      } else {
+        for (let i = 0; i < markers.length; i++) {
+          let current = markers[i];
+          let next = markers[i + 1];
+
+          if (
+            (prev && // prev pressed
+              current.when < now &&
+              (!next ||
+                ((next.when > now || nearlyEqual(next.when, now)) &&
+                  (type === MarkerTypes.BEAT ||
+                    (type === MarkerTypes.MEASURE &&
+                      current.type === MarkerTypes.MEASURE))))) ||
+            (!prev && // next pressed
+              (next &&
+                next.when > now &&
+                (current.when < now || nearlyEqual(current.when, now)) &&
+                (type === MarkerTypes.BEAT ||
+                  (type === MarkerTypes.MEASURE &&
+                    next.type === MarkerTypes.MEASURE))))
+          ) {
+            found = prev ? i : i + 1;
+            break;
+          }
+        }
+      }
+
+      console.log("found", found);
+      if (found)
+        waveSurfer.seekAndCenter(
+          markers[found].when / waveSurfer.getDuration()
+        );
+    },
+    [waveSurfer]
+  );
+
   useEffect(() => {
     if (!waveSurfer) return;
-    if (!nextMarkerPressed && !prevMarkerPressed) return;
-
-    let markers = waveSurfer.params.markers;
-    if (markers.length === 0) return;
-    let now = waveSurfer.getCurrentTime();
-    let found;
-
-    for (let i = 0; i < markers.length; i++) {
-      let current = markers[i];
-      let next = markers[i + 1];
-
-      if (!next) {
-        found = i;
-        break;
-      } else if (
-        (nearlyEqual(current.when, now) || current.when < now) &&
-        next.when > now
-      ) {
-        found = i;
-        break;
-      }
-    }
-    if (prevMarkerPressed && found === 0) return;
-    if (nextMarkerPressed && found === markers.length - 1) return;
-    let newMarkerIndex = prevMarkerPressed
-      ? now > markers[found].when // prevMarkerPressed
-        ? found
-        : found - 1 // next
-      : now < markers[found].when // nextMarkerPressed
-      ? found
-      : found + 1;
-    console.log("newMarkerIndex", newMarkerIndex);
-    waveSurfer.seekAndCenter(
-      markers[newMarkerIndex].when / waveSurfer.getDuration()
-    );
-  }, [waveSurfer, prevMarkerPressed, nextMarkerPressed]);
+    if (prevMeasureMarkerPressed) searchMarker(MarkerTypes.MEASURE, true);
+    if (nextMeasureMarkerPressed) searchMarker(MarkerTypes.MEASURE, false);
+    if (prevBeatMarkerPressed) searchMarker(MarkerTypes.BEAT, true);
+    if (nextBeatMarkerPressed) searchMarker(MarkerTypes.BEAT, false);
+  }, [
+    waveSurfer,
+    prevMeasureMarkerPressed,
+    nextMeasureMarkerPressed,
+    prevBeatMarkerPressed,
+    nextBeatMarkerPressed,
+    searchMarker
+  ]);
 
   useEffect(() => {
     if (!waveSurfer) return;
@@ -105,11 +128,11 @@ export default function(args) {
     }
   }, [waveSurfer, deletePressed]);
 
-  useEffect(() => {
-    if (!waveSurfer && !resetMarkersPressed) return;
+  const resetMarkers = useCallback(() => {
     waveSurfer.params.markers = [];
     waveSurfer.fireEvent("redraw");
-  }, [waveSurfer, resetMarkersPressed]);
+    localStorage.setItem("markers", null);
+  }, [waveSurfer]);
 
   useEffect(() => {
     if (!waveSurfer) return;
@@ -120,6 +143,7 @@ export default function(args) {
   }, [waveSurfer]);
   useEffect(() => {
     if (!waveSurfer) {
+      console.log("loadMarkers", loadMarkers());
       setWaveSurfer(
         WaveSurfer.create({
           container: "#waveform",
@@ -127,7 +151,7 @@ export default function(args) {
           height: 300,
           progressColor: "violet",
           fillParent: true,
-          markers: [],
+          markers: loadMarkers() || [],
           plugins: [
             TimeLine.create({
               container: "#timeline"
@@ -137,6 +161,24 @@ export default function(args) {
       );
     }
   }, [waveSurfer]);
+
+  const saveMarkers = useCallback(() => {
+    console.log("saving markers");
+    localStorage.setItem("markers", JSON.stringify(waveSurfer.params.markers));
+  }, [waveSurfer]);
+
+  function loadMarkers() {
+    try {
+      let markers = localStorage.getItem("markers");
+      return JSON.parse(markers);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  useEffect(() => {
+    if (WaveSurfer && savePressed) saveMarkers();
+  }, [waveSurfer, savePressed, saveMarkers]);
 
   useEffect(() => {
     if (waveSurfer) waveSurfer.load("sample.mp3");
@@ -159,8 +201,14 @@ export default function(args) {
       let existing = waveSurfer.params.markers.find(
         marker => marker.when === when
       );
-      if (existing) return;
-      console.log("adding marker");
+      if (existing) {
+        // convert to desired type
+        if (existing.type !== type) {
+          existing.type = type;
+          waveSurfer.fireEvent("redraw");
+        }
+        return;
+      }
       waveSurfer.fireEvent("marker-added", {
         when,
         type
@@ -325,7 +373,39 @@ export default function(args) {
       <div className="settings">
         <div>
           <div>
-            {" "}
+            <button
+              type="button"
+              onClick={e => {
+                searchMarker(MarkerTypes.BEAT, true);
+              }}
+            >
+              Search previous beat marker
+            </button>
+            <button
+              type="button"
+              onClick={e => {
+                searchMarker(MarkerTypes.BEAT, false);
+              }}
+            >
+              Search next beat marker
+            </button>
+            <button
+              type="button"
+              onClick={e => {
+                searchMarker(MarkerTypes.MEASURE, true);
+              }}
+            >
+              Search previous measure marker
+            </button>
+            <button
+              type="button"
+              onClick={e => {
+                searchMarker(MarkerTypes.MEASURE, false);
+              }}
+            >
+              Search next measure marker
+            </button>
+
             <button
               type="button"
               onClick={e => {
@@ -341,6 +421,14 @@ export default function(args) {
               }}
             >
               Add Measure Marker
+            </button>
+          </div>
+          <div>
+            <button type="button" onClick={() => saveMarkers()}>
+              Save Markers
+            </button>
+            <button type="button" onClick={() => resetMarkers()}>
+              Reset Markers
             </button>
           </div>
           <div>
@@ -421,6 +509,10 @@ export default function(args) {
             ></input>
           </div>
         </div>
+      </div>
+      <div>
+        Keyboard: space - play/pause, b - beat marker, m - measure marker, [/] -
+        next/prev marker, backspace - delete current marker
       </div>
     </div>
   );
