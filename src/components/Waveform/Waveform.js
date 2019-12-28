@@ -1,110 +1,80 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import Axios from 'axios';
 import WaveformCanvas from './WaveformCanvas';
 import Timeline from './Timeline';
 import { msToTime } from '../../helpers/helper';
 import { useKeyPress } from '../../hooks/keyPressHooks';
 import { usePrevious, useAnimationFrame } from '../../hooks/hooks';
+import Player from '../Player/Player';
 
 export default function Waveform({ src }) {
-    const audioContextRef = useRef();
-    const bufferSourceRef = useRef();
+    const playerRef = useRef();
 
-    const [audioBuffer, setAudioBuffer] = useState(null);
+    const [msPerPixel, setMsPerPixel] = useState(30);
 
-    const [msPerPixel, setMsPerPixel] = useState(50);
+    const [isReady, setIsReady] = useState(false);
 
     const [playPosition, setPlayPosition] = useState(0);
-    const playStartTime = useRef(null);
-    const [isPlaying, setIsPlaying] = useState();
 
     const playPressed = useKeyPress(' ');
     const prevPlayPressed = usePrevious(playPressed);
     const [playStartPosition, setPlayStartPosition] = useState(0);
 
-    const playPausePressed = useCallback(() => {
-        console.log('playPausePressed');
-        if (!isPlaying) {
-            console.log('playing');
-            playStartTime.current = audioContextRef.current.currentTime;
-            bufferSourceRef.current = audioContextRef.current.createBufferSource();
-            bufferSourceRef.current.buffer = audioBuffer;
-            bufferSourceRef.current.loop = true;
-            bufferSourceRef.current.connect(
-                audioContextRef.current.destination,
-            );
-            console.log();
-            bufferSourceRef.current.start(0, playStartPosition);
-        } else {
-            console.log('stopping');
-            bufferSourceRef.current.stop();
-        }
-        setIsPlaying(!isPlaying);
-    }, [isPlaying, audioBuffer, playStartPosition]);
-
     useEffect(() => {
         if (playPressed && playPressed !== prevPlayPressed) {
+            const player = playerRef.current;
             console.log('playPressed');
-            playPausePressed();
+            if (!player.isPlaying) {
+                console.log('playing', playStartPosition);
+                player.play(playStartPosition);
+            } else {
+                console.log('stopping');
+                player.stop();
+            }
         }
-    }, [playPressed, playPausePressed, prevPlayPressed]);
+    }, [playPressed, prevPlayPressed, playStartPosition]);
 
     useAnimationFrame(
         deltaTime => {
-            if (isPlaying) {
-                const fromStart =
-                    audioContextRef.current.currentTime - playStartTime.current;
-                if (fromStart + playStartPosition > audioBuffer.duration);
-                setPlayPosition(fromStart + playStartPosition);
+            if (playerRef.current.isPlaying) {
+                setPlayPosition(playerRef.current.position);
             }
         },
-        [isPlaying, playStartPosition],
+        [playStartPosition],
     );
 
     useEffect(() => {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        audioContextRef.current = new AudioContext();
+        playerRef.current = new Player();
     }, []);
 
     useEffect(() => {
-        if (audioContextRef.current == null) return;
-        console.log('loadFromUrl');
-
-        const loadAudio = async () => {
-            const response = await Axios({
-                method: 'get',
-                url: src,
-                responseType: 'arraybuffer',
-            });
-            setAudioBuffer(
-                await audioContextRef.current.decodeAudioData(response.data),
-            );
+        if (playerRef.current == null) return;
+        console.log('load');
+        const load = async () => {
+            await playerRef.current.load(src);
+            console.log('loaded');
+            setIsReady(true);
+            console.log('ready');
         };
-        loadAudio();
+        load();
     }, [src]);
 
+    if (!isReady) {
+        return <div className="App">loading</div>;
+    }
+
+    const audioBuffer = playerRef.current.audioBuffer;
     const samplesPerPixel = audioBuffer
         ? (msPerPixel / 1000) * audioBuffer.sampleRate
         : null;
+    const width = audioBuffer.length / samplesPerPixel;
 
-    const getWidth = useCallback(() => {
-        return audioBuffer.length / samplesPerPixel;
-    }, [audioBuffer, samplesPerPixel]);
-
-    const waveClicked = useCallback(
-        event => {
-            let container = event.target.parentElement.parentElement;
-
-            const actualX = container.scrollLeft + event.clientX;
-            const relativePosition = actualX / getWidth();
-            setPlayStartPosition(audioBuffer.duration * relativePosition);
-        },
-        [getWidth, audioBuffer],
-    );
-
-    if (audioBuffer == null) {
-        return <div className="App">loading</div>;
-    }
+    const waveClicked = event => {
+        let container = event.target.parentElement.parentElement;
+        const actualX = container.scrollLeft + event.clientX;
+        console.log(container);
+        const relativePosition = actualX / width;
+        setPlayStartPosition(audioBuffer.duration * relativePosition);
+    };
 
     const canvases = [];
     for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
@@ -117,8 +87,6 @@ export default function Waveform({ src }) {
             />,
         );
     }
-
-    const width = getWidth();
 
     return (
         <div>
