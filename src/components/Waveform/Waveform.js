@@ -55,7 +55,6 @@ export default function Waveform({ src }) {
                 const fromStart =
                     audioContextRef.current.currentTime - playStartTime.current;
                 if (fromStart + playStartPosition > audioBuffer.duration);
-                if ()
                 setPlayPosition(fromStart + playStartPosition);
             }
         },
