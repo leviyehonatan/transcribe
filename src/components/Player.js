@@ -1,5 +1,5 @@
 import Axios from 'axios';
-import SoundTouch from '../../processing/soundtouch';
+import SoundTouch from '../processing/soundtouch';
 
 export default class Player {
     constructor() {

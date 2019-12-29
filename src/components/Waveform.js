@@ -7,10 +7,10 @@ import React, {
 } from 'react';
 import WaveformCanvas from './WaveformCanvas';
 import Timeline from './Timeline';
-import { msToTime } from '../../helpers/helper';
-import { useKeyPress } from '../../hooks/keyPressHooks';
-import { usePrevious, useAnimationFrame } from '../../hooks/hooks';
-import Player from '../Player/Player';
+import { msToTime } from '../helpers/helper';
+import { useKeyPress } from '../hooks/keyPressHooks';
+import { usePrevious, useAnimationFrame } from '../hooks/hooks';
+import Player from './Player';
 import Playhead from './Playhead';
 import PlaySettingsContext from './PlaySettingsContext';
 

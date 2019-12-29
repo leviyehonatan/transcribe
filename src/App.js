@@ -1,6 +1,6 @@
 import React from 'react';
 import './App.css';
-import Waveform from './components/Waveform/Waveform';
+import Waveform from './components/Waveform';
 
 function App() {
     return (
