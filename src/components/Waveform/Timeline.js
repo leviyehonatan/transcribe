@@ -9,7 +9,7 @@ export default function Timeline({
     const canvasRef = useRef();
     const width = audioBuffer.length / samplesPerPixel;
 
-    const redraw = useEffect(() => {
+    useEffect(() => {
         const canvas = canvasRef.current;
         const context = canvas.getContext('2d');
         context.fillStyle = 'white';

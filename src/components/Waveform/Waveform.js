@@ -1,14 +1,23 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, {
+    useEffect,
+    useState,
+    useCallback,
+    useRef,
+    useContext,
+} from 'react';
 import WaveformCanvas from './WaveformCanvas';
 import Timeline from './Timeline';
 import { msToTime } from '../../helpers/helper';
 import { useKeyPress } from '../../hooks/keyPressHooks';
 import { usePrevious, useAnimationFrame } from '../../hooks/hooks';
 import Player from '../Player/Player';
+import Playhead from './Playhead';
+import PlaySettingsContext from './PlaySettingsContext';
 
 export default function Waveform({ src }) {
     const playerRef = useRef();
 
+    const playSettings = useContext(PlaySettingsContext);
     const [msPerPixel, setMsPerPixel] = useState(30);
 
     const [isReady, setIsReady] = useState(false);
@@ -18,6 +27,9 @@ export default function Waveform({ src }) {
     const playPressed = useKeyPress(' ');
     const prevPlayPressed = usePrevious(playPressed);
     const [playStartPosition, setPlayStartPosition] = useState(0);
+
+    const [detuneSemitones, setDetuneSemitones] = useState(0);
+    const [playbackSpeed, setPlaybackSpeed] = useState(1);
 
     useEffect(() => {
         if (playPressed && playPressed !== prevPlayPressed) {
@@ -58,6 +70,33 @@ export default function Waveform({ src }) {
         load();
     }, [src]);
 
+    useEffect(() => {
+        const player = playerRef.current;
+        if (!player) return;
+        if (player.isPlaying) {
+            player.stop();
+            player.play(playStartPosition);
+        }
+    }, [playStartPosition, playerRef]);
+
+    useEffect(() => {
+        const player = playerRef.current;
+        if (player == null) return;
+        player.detuneSemitones = detuneSemitones;
+    }, [detuneSemitones]);
+
+    useEffect(() => {
+        const player = playerRef.current;
+        if (player == null) return;
+        player.playbackSpeed = playbackSpeed;
+    }, [playbackSpeed]);
+
+    const zoomScroll = useCallback(event => {
+        if (event.metaKey) {
+            console.log('meta scroll');
+        }
+    }, []);
+
     if (!isReady) {
         return <div className="App">loading</div>;
     }
@@ -71,7 +110,6 @@ export default function Waveform({ src }) {
     const waveClicked = event => {
         let container = event.target.parentElement.parentElement;
         const actualX = container.scrollLeft + event.clientX;
-        console.log(container);
         const relativePosition = actualX / width;
         setPlayStartPosition(audioBuffer.duration * relativePosition);
     };
@@ -91,6 +129,9 @@ export default function Waveform({ src }) {
     return (
         <div>
             <div
+                onScroll={event => {
+                    if (event.metaKey) event.preventDefault();
+                }}
                 style={{
                     position: 'relative',
                     width: '100vw',
@@ -102,17 +143,50 @@ export default function Waveform({ src }) {
                     audioBuffer={audioBuffer}
                     samplesPerPixel={samplesPerPixel}
                 />
-                <div style={{ position: 'relative' }} onClick={waveClicked}>
-                    <div
-                        style={{
-                            height: '100%',
-                            width: '1px',
-                            position: 'absolute',
-                            backgroundColor: 'red',
-                            left: (playPosition / audioBuffer.duration) * width,
-                        }}
+                <div
+                    style={{ position: 'relative' }}
+                    onClick={waveClicked}
+                    onScroll={zoomScroll}
+                >
+                    <Playhead
+                        width={width}
+                        audioBuffer={audioBuffer}
+                        position={playPosition}
                     />
                     {canvases}
+                </div>
+            </div>
+            <div>
+                <div id="pitch shift">
+                    <div>
+                        pitch shift(semitones) -
+                        <input
+                            type="range"
+                            value={detuneSemitones}
+                            onChange={e =>
+                                setDetuneSemitones(Number(e.target.value))
+                            }
+                            step={1}
+                            min={-12}
+                            max={12}
+                        />
+                    </div>
+                    <p>{detuneSemitones}</p>
+                </div>
+                <div id="speed">
+                    <div>
+                        speed 0
+                        <input
+                            type="range"
+                            value={playbackSpeed}
+                            onChange={e => setPlaybackSpeed(e.target.value)}
+                            step={0.01}
+                            min={0}
+                            max={2}
+                        />
+                        2
+                    </div>
+                    <div>{playbackSpeed}</div>
                 </div>
             </div>
             <div>
