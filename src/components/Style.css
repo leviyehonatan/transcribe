@@ -1,0 +1,11 @@
+.nofocus *:focus {
+    outline: none;
+}
+
+#waveform-container {
+    scrollbar-width: none;
+}
+
+#waveform-container::-webkit-scrollbar {
+    display: none;
+}

@@ -1,10 +1,4 @@
-import React, {
-    useEffect,
-    useState,
-    useCallback,
-    useRef,
-    useContext,
-} from 'react';
+import React, { useEffect, useState, useRef, useContext } from 'react';
 import WaveformCanvas from './WaveformCanvas';
 import Timeline from './Timeline';
 import { msToTime } from '../helpers/helper';
@@ -13,12 +7,17 @@ import { usePrevious, useAnimationFrame } from '../hooks/hooks';
 import Player from './Player';
 import Playhead from './Playhead';
 import PlaySettingsContext from './PlaySettingsContext';
+import Overview from './Overview';
+import './Style.css';
 
 export default function Waveform({ src }) {
     const playerRef = useRef();
+    const waveformContainerRef = useRef();
 
     const playSettings = useContext(PlaySettingsContext);
-    const [msPerPixel, setMsPerPixel] = useState(30);
+    const [scale, setScale] = useState(512);
+
+    const [leftScroll, setLeftScroll] = useState(0);
 
     const [isReady, setIsReady] = useState(false);
 
@@ -26,6 +25,8 @@ export default function Waveform({ src }) {
 
     const playPressed = useKeyPress(' ');
     const prevPlayPressed = usePrevious(playPressed);
+
+    const metaPressed = useKeyPress(91);
     const [playStartPosition, setPlayStartPosition] = useState(0);
 
     const [detuneSemitones, setDetuneSemitones] = useState(0);
@@ -34,12 +35,9 @@ export default function Waveform({ src }) {
     useEffect(() => {
         if (playPressed && playPressed !== prevPlayPressed) {
             const player = playerRef.current;
-            console.log('playPressed');
             if (!player.isPlaying) {
-                console.log('playing', playStartPosition);
                 player.play(playStartPosition);
             } else {
-                console.log('stopping');
                 player.stop();
             }
         }
@@ -56,16 +54,18 @@ export default function Waveform({ src }) {
 
     useEffect(() => {
         playerRef.current = new Player();
+        window.addEventListener('keydown', function(e) {
+            if (e.keyCode === 32 && e.target === document.body) {
+                e.preventDefault();
+            }
+        });
     }, []);
 
     useEffect(() => {
         if (playerRef.current == null) return;
-        console.log('load');
         const load = async () => {
             await playerRef.current.load(src);
-            console.log('loaded');
             setIsReady(true);
-            console.log('ready');
         };
         load();
     }, [src]);
@@ -91,21 +91,12 @@ export default function Waveform({ src }) {
         player.playbackSpeed = playbackSpeed;
     }, [playbackSpeed]);
 
-    const zoomScroll = useCallback(event => {
-        if (event.metaKey) {
-            console.log('meta scroll');
-        }
-    }, []);
-
     if (!isReady) {
         return <div className="App">loading</div>;
     }
 
     const audioBuffer = playerRef.current.audioBuffer;
-    const samplesPerPixel = audioBuffer
-        ? (msPerPixel / 1000) * audioBuffer.sampleRate
-        : null;
-    const width = audioBuffer.length / samplesPerPixel;
+    const width = audioBuffer.length / scale;
 
     const waveClicked = event => {
         let container = event.target.parentElement.parentElement;
@@ -119,19 +110,24 @@ export default function Waveform({ src }) {
         canvases.push(
             <WaveformCanvas
                 key={i}
+                scale={scale}
                 audioBuffer={audioBuffer}
                 channelIndex={i}
-                samplesPerPixel={samplesPerPixel}
             />,
         );
     }
 
+    const waveformContainer = waveformContainerRef.current;
+
     return (
-        <div>
+        <div className="nofocus">
             <div
+                id="waveform-container"
+                ref={waveformContainerRef}
                 onScroll={event => {
-                    if (event.metaKey) event.preventDefault();
+                    setLeftScroll(event.target.scrollLeft);
                 }}
+                scrollLeft={leftScroll}
                 style={{
                     position: 'relative',
                     width: '100vw',
@@ -141,13 +137,9 @@ export default function Waveform({ src }) {
                 <Timeline
                     playStartPosition={playStartPosition}
                     audioBuffer={audioBuffer}
-                    samplesPerPixel={samplesPerPixel}
+                    scale={scale}
                 />
-                <div
-                    style={{ position: 'relative' }}
-                    onClick={waveClicked}
-                    onScroll={zoomScroll}
-                >
+                <div style={{ position: 'relative' }} onClick={waveClicked}>
                     <Playhead
                         width={width}
                         audioBuffer={audioBuffer}
@@ -156,7 +148,54 @@ export default function Waveform({ src }) {
                     {canvases}
                 </div>
             </div>
-            <div>
+            <Overview
+                audioBuffer={audioBuffer}
+                playPosition={playPosition}
+                leftView={leftScroll}
+                width={width}
+                visibleWidth={
+                    waveformContainer ? waveformContainer.offsetWidth : 0
+                }
+            />
+            <div style={{ flex: 1, flexDirection: 'row' }}>
+                <div id="scale">
+                    <div>
+                        scale - {scale}
+                        <button
+                            onClick={() => {
+                                setScale(Math.min(scale / 1.2, 2048));
+                            }}
+                        >
+                            -
+                        </button>
+                        <button
+                            onClick={() => {
+                                setScale(Math.min(scale * 1.2, 2048));
+                            }}
+                        >
+                            +
+                        </button>
+                        <button
+                            onClick={() => {
+                                const fullWidth =
+                                    waveformContainerRef.current.offsetWidth;
+                                console.log('fullwidth', fullWidth);
+                                setScale(audioBuffer.length / fullWidth);
+                            }}
+                        >
+                            zoom All
+                        </button>
+                        <input
+                            type="range"
+                            value={scale}
+                            onChange={e => setScale(Number(e.target.value))}
+                            step={1}
+                            min={256}
+                            max={1024}
+                        />
+                    </div>
+                    <p>{detuneSemitones}</p>
+                </div>
                 <div id="pitch shift">
                     <div>
                         pitch shift(semitones) -
@@ -191,6 +230,7 @@ export default function Waveform({ src }) {
             </div>
             <div>
                 <title>statistics</title>
+                <p>width: {width}</p>
                 <p>length: {msToTime(audioBuffer.duration * 1000)}</p>
                 <p>current playing position: {msToTime(playPosition)}</p>
             </div>

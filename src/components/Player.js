@@ -23,7 +23,7 @@ export default class Player {
         );
         this.initSoundTouch();
     }
-
+    22;
     initSoundTouch() {
         this.soundTouch = new SoundTouch.SoundTouch(
             this.audioContext.sampleRate,
@@ -137,7 +137,13 @@ export default class Player {
     get position() {
         if (!this.isPlaying) return 0;
         const timeElapsed = this.audioContext.currentTime - this.playStartTime;
-        return timeElapsed * this._playbackSpeed + this.playStartPosition;
+        const position =
+            timeElapsed * this._playbackSpeed + this.playStartPosition;
+        if (position > this.audioBuffer.duration) {
+            this._isPlaying = false;
+            return this.audioBuffer.duration;
+        }
+        return position;
     }
 
     restartPlayback() {

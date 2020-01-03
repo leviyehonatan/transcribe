@@ -4,8 +4,10 @@ export function useKeyPress(targetKey) {
     // State for keeping track of whether key is pressed
     const [keyPressed, setKeyPressed] = useState(false);
 
-    const match = event => targetKey.toLowerCase() === event.key.toLowerCase();
-
+    const match = event =>
+        Number.isInteger(targetKey)
+            ? targetKey === event.keyCode
+            : targetKey.toLowerCase() === event.key.toLowerCase();
     const onDown = event => {
         if (match(event)) setKeyPressed(true);
     };

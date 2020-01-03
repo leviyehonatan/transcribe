@@ -1,12 +1,12 @@
 import React from 'react';
 import './App.css';
-import Waveform from './components/Waveform';
+import Transcriber from './components/Transcriber';
 
 function App() {
     return (
         <div className="App">
-            <div className="title">Transcribe</div>
-            <Waveform src="sample.mp3" />{' '}
+            <div className="title"></div>
+            <Transcriber src="sample.mp3" />{' '}
         </div>
     );
 }

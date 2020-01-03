@@ -1,13 +1,13 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 export default function Timeline({
-    samplesPerPixel,
+    scale,
     audioBuffer,
     markers,
     playStartPosition,
 }) {
     const canvasRef = useRef();
-    const width = audioBuffer.length / samplesPerPixel;
+    const width = audioBuffer.length / scale;
 
     useEffect(() => {
         const canvas = canvasRef.current;
